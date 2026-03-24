@@ -62,6 +62,51 @@ const mockEventService = {
     throw new Error('Event not found');
   },
 
+  recommendTimeslots: async (id, payload = {}) => {
+    await delay();
+    const event = mockEvents.find(e => e.id === parseInt(id));
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    const fromDate = payload.from_date || event.date;
+    const toDate = payload.to_date || event.date;
+    const topK = Number(payload.top_k || 5);
+    const venueId = payload.venue_id || event.venue || mockVenues[0]?.id;
+    const venue = mockVenues.find((v) => v.id === Number(venueId)) || mockVenues[0];
+
+    const recommendations = Array.from({ length: Math.max(1, topK) }).map((_, idx) => ({
+      date: fromDate,
+      start_time: `0${9 + idx}:00:00`.slice(-8),
+      end_time: `0${10 + idx}:00:00`.slice(-8),
+      venue_id: venue?.id || null,
+      venue_name: venue?.name || 'Venue',
+      predicted_conflict_penalty: Number((idx * 0.2).toFixed(2)),
+      conflict_breakdown: {
+        venue_overlap: idx === 0 ? 0 : 1,
+        judge_overlap: 0,
+        volunteer_overlap: 0,
+        total_overlap: idx === 0 ? 0 : 1,
+      },
+      method: 'rule_based_fallback',
+    }));
+
+    return {
+      event: {
+        id: event.id,
+        name: event.name,
+        category: event.category,
+      },
+      recommendation_goal: 'conflict_avoidance',
+      window: {
+        from_date: fromDate,
+        to_date: toDate,
+      },
+      count: recommendations.length,
+      recommendations,
+    };
+  },
+
   publishEvent: async (id, isPublished) => {
     await delay();
     const event = mockEvents.find(e => e.id === parseInt(id));
@@ -146,6 +191,7 @@ const mockEventService = {
         section: participant.section,
         student_class: participant.student_class,
         school: participant.school,
+        gender: participant.gender || '',
       },
       participations,
     };
@@ -156,12 +202,14 @@ const mockEventService = {
     return mockRegistrations;
   },
 
-  registerForEvent: async (eventId, firstName, lastName) => {
+  registerForEvent: async (eventId, firstName, lastName, groupId = '', gender = 'BOYS') => {
     await delay();
     const event = mockEvents.find(e => e.id === parseInt(eventId));
     if (!event) {
       throw new Error('Event not found');
     }
+
+    const normalizedGender = String(gender || '').toUpperCase() === 'GIRLS' ? 'GIRLS' : 'BOYS';
 
     const newRegistration = {
       id: mockRegistrations.length + 1,
@@ -169,13 +217,16 @@ const mockEventService = {
       participant: mockRegistrations.length + 1,
       first_name: firstName,
       last_name: lastName,
+      group_id: String(groupId || '').trim().toUpperCase() || undefined,
+       gender: normalizedGender,
       chess_number: `CH${String(mockRegistrations.length + 1).padStart(3, '0')}`,
       registration_date: new Date().toISOString(),
       participant_details: {
         first_name: firstName,
         last_name: lastName,
         school: { name: "Demo School" },
-        section: "Class 10A"
+        section: "Class 10A",
+        gender: normalizedGender
       },
       event_details: event
     };
